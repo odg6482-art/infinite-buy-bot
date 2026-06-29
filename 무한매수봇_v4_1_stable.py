@@ -28,7 +28,7 @@ from telegram.ext import (
 )
 import yfinance as yf
 
-BOT_TOKEN = "8805569187:AAGDn-6DcEE7iwZ-isPCo9xAdV6hLD5hxgA"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 VERSION = "4.4"
 SUPPORTED_SYMBOLS = ("TQQQ", "SOXL")
