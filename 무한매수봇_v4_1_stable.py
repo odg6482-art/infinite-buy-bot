@@ -550,8 +550,9 @@ def build_order_confirmation_table(state: StrategyState, rate: float) -> str:
         star_buy_price = calc_general_star_buy_price(state.avg_price, state.symbol, state.split_count, state.t_value)
         buy_attempt_amount = calc_general_buy_attempt_amount(state.cash_remaining, state.split_count, state.t_value)
         final_sell_price = calc_final_sell_price(state.symbol, state.avg_price)
-        quarter_sell_qty = round(state.quantity * 0.25, 2)
-        final_sell_qty = round(state.quantity - quarter_sell_qty, 2)
+        # 실전 정수주 기준: 쿼터 매도는 보유수량의 25%를 내림, 나머지는 최종매도로 배정
+        quarter_sell_qty = math.floor(state.quantity * 0.25)
+        final_sell_qty = math.floor(state.quantity - quarter_sell_qty)
 
         lines.append("\n🛒 [매수 주문 - 공식 기준]")
         lines.append(f"💵 오늘 1회 매수 시도금액: {format_usd(buy_attempt_amount)}")
@@ -560,9 +561,13 @@ def build_order_confirmation_table(state: StrategyState, rate: float) -> str:
         full_total_amount = 0.0
 
         if mode == "GENERAL_FIRST_HALF":
-            star_amount = buy_attempt_amount / 2
-            avg_amount = buy_attempt_amount / 2
+            # 실전 정수주 기준:
+            # 1) 별지점에는 1회 매수금액의 절반을 먼저 배정
+            # 2) 별지점에서 정수주 매수 후 남는 금액은 버리지 않고 평단가 주문 가능금액에 합산
+            star_amount = round2(buy_attempt_amount / 2)
             star_qty = math.floor(star_amount / star_buy_price) if star_buy_price > 0 else 0
+            star_used = round2(star_qty * star_buy_price)
+            avg_amount = round2(buy_attempt_amount - star_used)
             avg_qty = math.floor(avg_amount / state.avg_price) if state.avg_price > 0 else 0
             orders = [("⭐ 별지점 LOC 매수", star_buy_price, star_qty, star_amount), ("🟡 평단 LOC 매수", state.avg_price, avg_qty, avg_amount)]
             for i, band in enumerate(state.lower_bands, start=1):
@@ -718,19 +723,25 @@ def build_plan_text(state: StrategyState, rate: float) -> str:
         star_buy_price = calc_general_star_buy_price(state.avg_price, state.symbol, state.split_count, state.t_value)
         buy_attempt_amount = calc_general_buy_attempt_amount(state.cash_remaining, state.split_count, state.t_value)
 
-        quarter_sell_qty = round(state.quantity * 0.25, 2)
-        final_sell_qty = round(state.quantity - quarter_sell_qty, 2)
+        # 실전 정수주 기준: 쿼터 매도는 보유수량의 25%를 내림, 나머지는 최종매도로 배정
+        quarter_sell_qty = math.floor(state.quantity * 0.25)
+        final_sell_qty = math.floor(state.quantity - quarter_sell_qty)
         final_sell_price = calc_final_sell_price(state.symbol, state.avg_price)
 
         buy_orders = []
         if mode == "GENERAL_FIRST_HALF":
+            # 실전 정수주 기준:
+            # 별지점 절반 배정분에서 정수주 매수 후 남는 금액은 평단가 주문 가능금액에 합산
             star_block = round2(buy_attempt_amount / 2)
-            avg_block = round2(buy_attempt_amount / 2)
+            star_qty = safe_floor(star_block, star_buy_price)
+            star_used = round2(star_qty * star_buy_price)
+            avg_block = round2(buy_attempt_amount - star_used)
+            avg_qty = safe_floor(avg_block, state.avg_price)
             buy_orders.append({
                 "icon": "🟢",
                 "name": "별지점",
                 "price": star_buy_price,
-                "qty": safe_floor(star_block, star_buy_price),
+                "qty": star_qty,
                 "amount": star_block,
                 "fill_type": "절반",
             })
@@ -738,9 +749,9 @@ def build_plan_text(state: StrategyState, rate: float) -> str:
                 "icon": "🟡",
                 "name": "평단가",
                 "price": state.avg_price,
-                "qty": safe_floor(avg_block, state.avg_price),
+                "qty": avg_qty,
                 "amount": avg_block,
-                "fill_type": "절반",
+                "fill_type": "잔액",
             })
             for idx, band in enumerate(state.lower_bands, start=1):
                 buy_orders.append({
